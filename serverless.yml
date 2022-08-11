@@ -24,12 +24,12 @@ constructs:
     type: queue
     batchSize: 1
     worker:
-      handler: src/consumer.consumer
-      reservedConcurrency: 10
+      handler: src/handlers/consumer.consumer
+      reservedConcurrency: 100
 
 functions:
   producer:
-    handler: src/trigger.producer
+    handler: src/handlers/trigger.producer
     events:
       - httpApi:
           method: post
