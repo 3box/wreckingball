@@ -17,11 +17,13 @@ export const producer = async (event: APIGatewayEvent) => {
     const body = JSON.parse(event.body);
     const count = body.count || 1;
     const identifier = body.identifier || `run-${Math.floor(Math.random() * 100000)}`
+    const endpoint = body.endpoint
+    if (!endpoint) throw new Error(`Must provide endpoint`)
     const promises = Array.from({ length: count }).map((_, index) => {
       return sqs
         .sendMessage({
           QueueUrl: process.env.QUEUE_URL,
-          MessageBody: identifier,
+          MessageBody: JSON.stringify({identifier, endpoint}),
           MessageAttributes: {
             AttributeName: {
               StringValue: "Attribute Value",
@@ -32,7 +34,6 @@ export const producer = async (event: APIGatewayEvent) => {
         .promise();
     });
     await Promise.all(promises);
-    console.log('promises.count', promises.length)
 
     return {
       statusCode: 200,

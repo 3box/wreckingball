@@ -4,7 +4,9 @@ import { TileDocument } from "@ceramicnetwork/stream-tile";
 
 export async function consumer(event: SQSEvent) {
   for (const record of event.Records) {
-    const ceramic = await createCeramic();
+    const body = JSON.parse(record.body);
+    console.log("Params: ", body);
+    const ceramic = await createCeramic(body.endpoint);
 
     const content0 = {
       foo: `hello-${Math.random()}`,
@@ -21,7 +23,6 @@ export async function consumer(event: SQSEvent) {
       "Message Attribute: ",
       messageAttributes.AttributeName.stringValue
     );
-    console.log("Identifier: ", record.body);
     console.log("ceramic payload:", tile.state);
   }
 }

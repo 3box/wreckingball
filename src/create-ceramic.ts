@@ -6,7 +6,7 @@ import * as KeyDidResolver from "key-did-resolver";
 import { Resolver } from "did-resolver";
 import { DID } from "dids";
 
-export async function createCeramic(apiHost: string = 'https://ceramic-dev.3boxlabs.com/') {
+export async function createCeramic(apiHost: string) {
   const ceramic = new CeramicClient(apiHost || process.env.CERAMIC_ENDPOINT);
   const seed = randomBytes(32);
   const provider = new Ed25519Provider(seed);
