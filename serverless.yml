@@ -22,8 +22,10 @@ provider:
 constructs:
   jobs:
     type: queue
+    batchSize: 1
     worker:
       handler: src/consumer.consumer
+      reservedConcurrency: 10
 
 functions:
   producer:
