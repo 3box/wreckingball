@@ -9,6 +9,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "serverless": "^3.21.0"
+    "esbuild": "^0.15.1",
+    "esbuild-node-externals": "^1.4.1",
+    "serverless": "^3.21.0",
+    "serverless-esbuild": "^1.32.5"
   }
 }
