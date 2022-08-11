@@ -25,7 +25,7 @@ constructs:
     batchSize: 1
     worker:
       handler: src/handlers/consumer.consumer
-      reservedConcurrency: 100
+#      reservedConcurrency: 1000
 
 functions:
   producer:
