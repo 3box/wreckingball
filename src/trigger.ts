@@ -1,13 +1,46 @@
-export async function hello (event) {
+import { APIGatewayEvent } from "aws-lambda";
+import { SQS } from "aws-sdk";
+
+const sqs = new SQS();
+
+export const producer = async (event: APIGatewayEvent) => {
+  let statusCode = 200;
+  let message;
+
+  if (!event.body) {
     return {
-        statusCode: 200,
-        body: JSON.stringify(
-            {
-                message: "Hello Serverless v3.0! Your function executed successfully!",
-                input: event,
-            },
-            null,
-            2
-        ),
+      statusCode: 400,
+      body: JSON.stringify({
+        message: "No body was found",
+      }),
     };
-}
+  }
+
+  try {
+    await sqs
+      .sendMessage({
+        QueueUrl: process.env.QUEUE_URL,
+        MessageBody: event.body,
+        MessageAttributes: {
+          AttributeName: {
+            StringValue: "Attribute Value",
+            DataType: "String",
+          },
+        },
+      })
+      .promise();
+
+    message = "Message accepted!";
+  } catch (error) {
+    console.log(error);
+    message = error;
+    statusCode = 500;
+  }
+
+  return {
+    statusCode,
+    body: JSON.stringify({
+      message,
+    }),
+  };
+};

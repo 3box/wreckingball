@@ -5,6 +5,7 @@ frameworkVersion: '3'
 
 plugins:
   - serverless-esbuild
+  - serverless-lift
 
 custom:
   esbuild:
@@ -18,10 +19,18 @@ provider:
   name: aws
   runtime: nodejs16.x
 
+constructs:
+  jobs:
+    type: queue
+    worker:
+      handler: src/consumer.consumer
+
 functions:
-  hello:
-    handler: src/trigger.hello
+  producer:
+    handler: src/trigger.producer
     events:
       - httpApi:
-          path: /
-          method: get
+          method: post
+          path: /produce
+    environment:
+      QUEUE_URL: ${construct:jobs.queueUrl}
