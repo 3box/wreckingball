@@ -18,6 +18,8 @@ custom:
 provider:
   name: aws
   runtime: nodejs16.x
+  timeout: 60
+  memorySize: 2048
 
 constructs:
   jobs:
@@ -25,7 +27,6 @@ constructs:
     batchSize: 1
     worker:
       handler: src/handlers/consumer.consumer
-#      reservedConcurrency: 1000
 
 functions:
   producer:

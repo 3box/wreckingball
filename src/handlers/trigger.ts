@@ -16,6 +16,7 @@ export const producer = async (event: APIGatewayEvent) => {
   try {
     const body = JSON.parse(event.body);
     const count = body.count || 1;
+    const identifier = body.identifier || `run-${Math.floor(Math.random() * 100000)}`
     const promises = Array.from({ length: count }).map((_, index) => {
       return sqs
         .sendMessage({
