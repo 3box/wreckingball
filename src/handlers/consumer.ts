@@ -21,7 +21,7 @@ export async function consumer(event: SQSEvent) {
       "Message Attribute: ",
       messageAttributes.AttributeName.stringValue
     );
-    console.log("Message Body: ", record.body);
+    console.log("Identifier: ", record.body);
     console.log("ceramic payload:", tile.state);
   }
 }

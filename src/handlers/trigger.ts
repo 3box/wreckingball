@@ -21,7 +21,7 @@ export const producer = async (event: APIGatewayEvent) => {
       return sqs
         .sendMessage({
           QueueUrl: process.env.QUEUE_URL,
-          MessageBody: String(index),
+          MessageBody: identifier,
           MessageAttributes: {
             AttributeName: {
               StringValue: "Attribute Value",
