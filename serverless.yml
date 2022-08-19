@@ -27,6 +27,7 @@ constructs:
     batchSize: 1
     worker:
       handler: src/handlers/consumer.consumer
+      timeout: 60
 
 functions:
   producer:

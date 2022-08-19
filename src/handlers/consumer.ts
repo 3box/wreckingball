@@ -18,11 +18,6 @@ export async function consumer(event: SQSEvent) {
     const content1 = { foo: `world-${Math.random()}` };
     await tile.update(content1, undefined, { anchor: false, publish: false });
 
-    const messageAttributes = record.messageAttributes;
-    console.log(
-      "Message Attribute: ",
-      messageAttributes.AttributeName.stringValue
-    );
     console.log("ceramic payload:", tile.state);
   }
 }
