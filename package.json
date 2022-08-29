@@ -27,6 +27,7 @@
     "did-resolver": "^4.0.0",
     "dids": "^3.2.0",
     "key-did-provider-ed25519": "^2.0.1",
-    "key-did-resolver": "^2.0.6"
+    "key-did-resolver": "^2.0.6",
+    "uint8arrays": "^3.1.0"
   }
 }

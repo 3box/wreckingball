@@ -1,12 +1,14 @@
 import { SQSEvent } from "aws-lambda";
 import { createCeramic } from "../create-ceramic.js";
 import { TileDocument } from "@ceramicnetwork/stream-tile";
+import {randomBytes} from "@stablelib/random";
 
 export async function consumer(event: SQSEvent) {
   for (const record of event.Records) {
     const body = JSON.parse(record.body);
     console.log("Params: ", body);
-    const ceramic = await createCeramic(body.endpoint);
+    const seed = randomBytes(32);
+    const ceramic = await createCeramic(body.endpoint, seed);
 
     const content0 = {
       foo: `hello-${Math.random()}`,

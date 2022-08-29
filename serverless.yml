@@ -28,8 +28,22 @@ constructs:
     worker:
       handler: src/handlers/consumer.consumer
       timeout: 60
+  multistream:
+    type: queue
+    batchSize: 1
+    worker:
+      handler: src/handlers/multistream.consumer
+      timeout: 60
 
 functions:
+  producerMultistream:
+    handler: src/handlers/multistream.trigger
+    events:
+      - httpApi:
+          method: post
+          path: /multistream
+    environment:
+      QUEUE_URL: ${construct:multistream.queueUrl}
   producer:
     handler: src/handlers/trigger.producer
     events:

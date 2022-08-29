@@ -6,9 +6,8 @@ import * as KeyDidResolver from "key-did-resolver";
 import { Resolver } from "did-resolver";
 import { DID } from "dids";
 
-export async function createCeramic(apiHost: string) {
+export async function createCeramic(apiHost: string, seed: Uint8Array) {
   const ceramic = new CeramicClient(apiHost || process.env.CERAMIC_ENDPOINT);
-  const seed = randomBytes(32);
   const provider = new Ed25519Provider(seed);
   const keyDidResolver = KeyDidResolver.getResolver();
   const threeIdResolver = ThreeIdResolver.getResolver(ceramic);
