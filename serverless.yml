@@ -24,7 +24,7 @@ provider:
 constructs:
   jobs:
     type: queue
-    batchSize: 1
+    batchSize: 10
     worker:
       handler: src/handlers/consumer.consumer
       timeout: 60
