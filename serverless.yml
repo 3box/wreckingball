@@ -30,7 +30,8 @@ constructs:
       timeout: 60
   multistream:
     type: queue
-    batchSize: 1
+    batchSize: 100
+    maxBatchingWindow: 1
     worker:
       handler: src/handlers/multistream.consumer
       timeout: 60

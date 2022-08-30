@@ -11,6 +11,8 @@ import { randomBytes } from "@stablelib/random";
 const sqs = new SQS();
 
 export async function consumer(event: SQSEvent) {
+  console.log("r.0", event.Records);
+  const sqsPromises: Array<Promise<any>> = [];
   for (const record of event.Records) {
     const queueArn = record.eventSourceARN;
     const QUEUE_URL = queueArn.replace(
@@ -30,22 +32,24 @@ export async function consumer(event: SQSEvent) {
       await tile.update(content1, undefined, { anchor: false, publish: false });
       console.log(`Updated tile`, tile.id.toString());
       console.log(tile.state);
-      const hopsRemaining = body.hops - 1
+      const hopsRemaining = body.hops - 1;
       const messageBody = Object.assign({}, body, {
         hops: hopsRemaining,
       });
       if (hopsRemaining) {
-        console.log(`Need to do ${hopsRemaining} hops`)
+        console.log(`Need to do ${hopsRemaining} hops`);
         // TODO Randomize
-        await sqs
+        sqsPromises.push(
+          sqs
             .sendMessage({
               QueueUrl: QUEUE_URL,
               MessageBody: JSON.stringify(messageBody),
             })
-            .promise();
+            .promise()
+        );
       } else {
         console.log(`Nothing to do with streamId`, body.streamId);
-        return "success"
+        return "success";
       }
     } else {
       // Create Tile
@@ -65,12 +69,14 @@ export async function consumer(event: SQSEvent) {
       });
       console.log(`Created a stream id`, tile.id.toString());
       console.log(tile.state);
-      await sqs
-        .sendMessage({
-          QueueUrl: QUEUE_URL,
-          MessageBody: JSON.stringify(messageBody),
-        })
-        .promise();
+      sqsPromises.push(
+        sqs
+          .sendMessage({
+            QueueUrl: QUEUE_URL,
+            MessageBody: JSON.stringify(messageBody),
+          })
+          .promise()
+      );
     }
     // const ceramic = await createCeramic(body.endpoint);
     //
@@ -86,6 +92,7 @@ export async function consumer(event: SQSEvent) {
     //
     // console.log("ceramic payload:", tile.state);
   }
+  await Promise.all(sqsPromises);
 }
 
 export async function trigger(event: APIGatewayEvent) {
