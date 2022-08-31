@@ -11,15 +11,14 @@ import { randomBytes } from "@stablelib/random";
 const sqs = new SQS();
 
 export async function consumer(event: SQSEvent) {
-  console.log("r.0", event.Records);
+  console.log("r.0", event.Records.length);
   const sqsPromises: Array<Promise<any>> = [];
-  for (const record of event.Records) {
+  const processingPromises = event.Records.map(async (record) => {
     const queueArn = record.eventSourceARN;
     const QUEUE_URL = queueArn.replace(
       /^arn:aws:sqs:([\w-]+):(\d+):([\w-]+)/g,
       "https://sqs.$1.amazonaws.com/$2/$3"
     );
-    console.log("queueUrl", QUEUE_URL);
 
     console.log("r", record);
     const body = JSON.parse(record.body);
@@ -78,20 +77,8 @@ export async function consumer(event: SQSEvent) {
           .promise()
       );
     }
-    // const ceramic = await createCeramic(body.endpoint);
-    //
-    // const content0 = {
-    //   foo: `hello-${Math.random()}`,
-    // };
-    // const tile = await TileDocument.create(ceramic, content0, undefined, {
-    //   anchor: false,
-    //   publish: false,
-    // });
-    // const content1 = { foo: `world-${Math.random()}` };
-    // await tile.update(content1, undefined, { anchor: false, publish: false });
-    //
-    // console.log("ceramic payload:", tile.state);
-  }
+  });
+  await Promise.all(processingPromises);
   await Promise.all(sqsPromises);
 }
 

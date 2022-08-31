@@ -18,7 +18,7 @@ custom:
 provider:
   name: aws
   runtime: nodejs16.x
-  timeout: 60
+  timeout: 120
   memorySize: 2048
 
 constructs:
@@ -27,14 +27,13 @@ constructs:
     batchSize: 10
     worker:
       handler: src/handlers/consumer.consumer
-      timeout: 60
+      timeout: 120
   multistream:
     type: queue
-    batchSize: 100
-    maxBatchingWindow: 1
+    batchSize: 10
     worker:
       handler: src/handlers/multistream.consumer
-      timeout: 60
+      timeout: 120
 
 functions:
   producerMultistream:
