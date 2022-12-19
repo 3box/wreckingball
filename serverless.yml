@@ -1,4 +1,4 @@
-org: ukstv
+org: doubtingben
 app: aws-node-http-api-project
 service: aws-node-http-api-project
 frameworkVersion: '3'
@@ -17,6 +17,12 @@ custom:
 
 provider:
   name: aws
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action: 'cloudwatch:PutMetricData'
+          Resource: '*'
   runtime: nodejs16.x
   timeout: 120
   memorySize: 2048
