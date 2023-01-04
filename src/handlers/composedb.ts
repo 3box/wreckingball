@@ -1,7 +1,6 @@
 import { SQSEvent, SQSBatchResponse } from "aws-lambda";
 import { createCeramic } from "../create-ceramic.js";
-import { triggerMetric } from "./metrics.js";
-import { TileDocument } from "@ceramicnetwork/stream-tile";
+import { triggerMetric, createDocMetric, readDocMetric, updateDocMetric } from "./metrics.js";
 import { Model, ModelDefinition } from '@ceramicnetwork/stream-model'
 import {
   ModelInstanceDocument,
@@ -48,23 +47,75 @@ export async function consumer(event: SQSEvent) {
 
     console.log("r", record);
     const body = JSON.parse(record.body);
-    if (body.streamId && body.numberOfReadsRequired) {
+    // Case crete new doc
+    if (!('streamId' in body)) {
+      const seed = randomBytes(32);
+      const ceramic = await createCeramic(body.endpoint, seed);
+      const model = await Model.create(ceramic, MODEL_DEFINITION)
+      const midMetadata = { model: model.id }
+      const modelContent = { myData: 0 };
+      const doc = await ModelInstanceDocument.create(ceramic, modelContent, midMetadata, undefined, {
+        anchor: false,
+        publish: false,
+      });
+      const messageBody = Object.assign({}, body, {
+        streamId: doc.id.toString(),
+        seed: uint8arrays.toString(seed, "base64url"),
+        numberOfUpdatesRequired: body.numberOfUpdatesRequired,
+        numberOfReadsRequired: body.numberOfReadsRequired,
+      });
+      console.log(`Created streamId: `, doc.id.toString());
+      console.log(doc.state);
+      sqsPromises.push(
+        sqs
+          .sendMessage({
+            QueueUrl: QUEUE_URL,
+            MessageBody: JSON.stringify(messageBody),
+          })
+          .promise()
+      );
+      console.log(await cloudwatch.putMetricData(createDocMetric(body.identifier)).promise())
+
+    } else if ('streamId' in body && body.numberOfReadsRequired > 0) {
       // Read the doc
       const seed = uint8arrays.fromString(body.seed, "base64url");
       const ceramic = await createCeramic(body.endpoint, seed);
       const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
-      console.log(`Read doc`, doc.id.toString());
+      const numberOfReadsRemaining = body.numberOfReadsRequired - 1;
+      console.log(await cloudwatch.putMetricData(readDocMetric(body.identifier, numberOfReadsRemaining)).promise())
+      console.log(`Read streamId: `, doc.id.toString());
+      console.log(`numberOfReadsRemaining: `, numberOfReadsRemaining);
+      const messageBody = Object.assign({}, body, {
+        numberOfReadsRequired: numberOfReadsRemaining,
+      });
+      await sleep(1 * 1000); // Sleep for 1 second
+      if (numberOfReadsRemaining > 0) {
+        console.log(`Need to do ${numberOfReadsRemaining} reads`);
+        // TODO Randomize
+        sqsPromises.push(
+          sqs
+            .sendMessage({
+              QueueUrl: QUEUE_URL,
+              MessageBody: JSON.stringify(messageBody),
+            })
+            .promise()
+        );
+      } else {
+        console.log(`Nothing to do with streamId`, body.streamId);
+        return "success";
+      }
 
-    } else if (body.streamId && body.numberOfUpdatesRequired) {
+    } else if ('streamId' in body && body.numberOfUpdatesRequired > 0) {
+      // Update the doc
       const seed = uint8arrays.fromString(body.seed, "base64url");
       const ceramic = await createCeramic(body.endpoint, seed);
       const newModelContent = { myData: 1 }; // TODO: get and increment the current value
       const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
       await doc.update(newModelContent, undefined, { anchor: false, publish: false });
+      const numberOfUpdatesRemaining = body.numberOfUpdatesRequired - 1;
       console.log(`Updated doc`, doc.id.toString());
       console.log(doc.state);
-
-      const numberOfUpdatesRemaining = body.numberOfUpdatesRequired - 1;
+      console.log(await cloudwatch.putMetricData(updateDocMetric(body.identifier, numberOfUpdatesRemaining)).promise())
       const messageBody = Object.assign({}, body, {
         numberOfUpdatesRequired: numberOfUpdatesRemaining,
       });
@@ -84,36 +135,7 @@ export async function consumer(event: SQSEvent) {
         return "success";
       }
     } else {
-      // Create Doc
-      const seed = randomBytes(32);
-      const ceramic = await createCeramic(body.endpoint, seed);
-
-      const model = await Model.create(ceramic, MODEL_DEFINITION)
-      const midMetadata = { model: model.id }
-      const modelContent = { myData: 0 };
-
-      const doc = await ModelInstanceDocument.create(ceramic, modelContent, midMetadata, undefined, {
-        anchor: false,
-        publish: false,
-      });
-      const streamID = doc.id
-
-
-      const messageBody = Object.assign({}, body, {
-        streamId: doc.id.toString(),
-        seed: uint8arrays.toString(seed, "base64url"),
-        numberOfUpdatesRequired: body.numberOfUpdatesRequired,
-      });
-      console.log(`Created a stream id`, doc.id.toString());
-      console.log(doc.state);
-      sqsPromises.push(
-        sqs
-          .sendMessage({
-            QueueUrl: QUEUE_URL,
-            MessageBody: JSON.stringify(messageBody),
-          })
-          .promise()
-      );
+      console.log(`Should never be here, generate an error?`);
     }
   });
 
@@ -174,4 +196,8 @@ export async function trigger(event: APIGatewayEvent) {
       }),
     };
   }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
