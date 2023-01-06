@@ -1,6 +1,4 @@
-org: doubtingben
-app: aws-node-http-api-project
-service: aws-node-http-api-project
+service: ceramic-benchmark-01
 frameworkVersion: '3'
 
 plugins:

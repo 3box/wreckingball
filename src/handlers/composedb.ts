@@ -16,6 +16,7 @@ import { randomBytes } from "@stablelib/random";
 
 const sqs = new SQS();
 const cloudwatch = new CloudWatch();
+const lambdaRuntimeSeconds = 90;
 
 const MODEL_DEFINITION: ModelDefinition = {
   name: 'MyModel',
@@ -61,8 +62,6 @@ export async function consumer(event: SQSEvent) {
       const messageBody = Object.assign({}, body, {
         streamId: doc.id.toString(),
         seed: uint8arrays.toString(seed, "base64url"),
-        numberOfUpdatesRequired: body.numberOfUpdatesRequired,
-        numberOfReadsRequired: body.numberOfReadsRequired,
       });
       console.log(`Created streamId: `, doc.id.toString());
       console.log(doc.state);
@@ -76,34 +75,28 @@ export async function consumer(event: SQSEvent) {
       );
       console.log(await cloudwatch.putMetricData(createDocMetric(body.identifier)).promise())
 
-    } else if ('streamId' in body && body.numberOfReadsRequired > 0) {
-      // Read the doc
-      const seed = uint8arrays.fromString(body.seed, "base64url");
-      const ceramic = await createCeramic(body.endpoint, seed);
-      const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
-      const numberOfReadsRemaining = body.numberOfReadsRequired - 1;
-      console.log(await cloudwatch.putMetricData(readDocMetric(body.identifier, numberOfReadsRemaining)).promise())
-      console.log(`Read streamId: `, doc.id.toString());
-      console.log(`numberOfReadsRemaining: `, numberOfReadsRemaining);
-      const messageBody = Object.assign({}, body, {
-        numberOfReadsRequired: numberOfReadsRemaining,
-      });
-      await sleep(1 * 1000); // Sleep for 1 second
-      if (numberOfReadsRemaining > 0) {
-        console.log(`Need to do ${numberOfReadsRemaining} reads`);
+    } else if ('streamId' in body && body.jobRunReadSeconds > 0) {
+      // Case read the doc
+      const readLoopStart = Date.now();
+      console.log(`msLeft: `, (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
+
+      while ((body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp) > 0) {
+        // if ((lambdaRuntimeSeconds * 1000) - (readLoopStart - Date.now()) > 0) {
+        //   console.log(`Lambda runtime reached: `, body.streamId);
+        //   return "success";
+        // }
+        
+        console.log(`msLeft: `, (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
+        const seed = uint8arrays.fromString(body.seed, "base64url");
+        const ceramic = await createCeramic(body.endpoint, seed);
+        const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
+        console.log(await cloudwatch.putMetricData(readDocMetric(body.identifier)).promise());
+        console.log(`Read streamId: `, doc.id.toString());
         // TODO Randomize
-        sqsPromises.push(
-          sqs
-            .sendMessage({
-              QueueUrl: QUEUE_URL,
-              MessageBody: JSON.stringify(messageBody),
-            })
-            .promise()
-        );
-      } else {
-        console.log(`Nothing to do with streamId`, body.streamId);
-        return "success";
+        await sleep(1 * 1000); // Sleep for 1 second
       }
+      console.log(`Done reading streamId`, body.streamId);
+      return "success";
 
     } else if ('streamId' in body && body.numberOfUpdatesRequired > 0) {
       // Update the doc
@@ -164,12 +157,13 @@ export async function trigger(event: APIGatewayEvent) {
 
     const state = 'Starting';
     const numberOfDocs = body.numberOfDocs || 1;
-    const numberOfUpdatesRequired = body.numberOfUpdatesRequired || 1;
-    const numberOfReadsRequired = body.numberOfReadsRequired || 1;
+    const jobRunReadSeconds = body.jobRunReadSeconds || 60;
+    const jobRunUpdateSeconds = body.jobRunUpdateSeconds || 0;
+    const jobStartTimestamp = Date.now()
     const identifier =
       body.identifier || `composedb-run-${Math.floor(Math.random() * 100000)}`;
 
-    const messageBody = JSON.stringify({ state, identifier, endpoint, numberOfDocs, numberOfUpdatesRequired, numberOfReadsRequired });
+    const messageBody = JSON.stringify({ state, identifier, endpoint, numberOfDocs, jobRunReadSeconds, jobRunUpdateSeconds, jobStartTimestamp });
     console.log("queue_url", process.env.QUEUE_URL);
     const promises = Array.from({ length: numberOfDocs }).map((_, index) => {
       return sqs

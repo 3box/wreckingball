@@ -40,7 +40,7 @@ export function createDocMetric(identifier: string) {
     return params
 }
 
-export function readDocMetric(identifier: string, numberOfReadsRemaining: number) {
+export function readDocMetric(identifier: string) {
     const params = {
         MetricData: [
             {
@@ -52,7 +52,8 @@ export function readDocMetric(identifier: string, numberOfReadsRemaining: number
                     }
                 ],
                 Unit: 'None',
-                Value: numberOfReadsRemaining
+                Value: 1,
+                StorageResolution: 1 // High resolution
             }
         ],
         Namespace: 'CeramicBenchmarkMetrics'
