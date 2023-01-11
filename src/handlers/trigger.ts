@@ -1,9 +1,9 @@
-import { APIGatewayEvent } from "aws-lambda";
-import { SQS } from "aws-sdk";
+import { APIGatewayEvent, Context } from "aws-lambda";
+import { SQS, CloudWatch } from "aws-sdk";
 
 const sqs = new SQS();
-
-export const producer = async (event: APIGatewayEvent) => {
+const cloudwatch = new CloudWatch();
+export const producer = async (event: APIGatewayEvent, context: Context,) => {
   if (!event.body) {
     return {
       statusCode: 400,
@@ -14,6 +14,7 @@ export const producer = async (event: APIGatewayEvent) => {
   }
 
   try {
+    const runID = context.awsRequestId
     const body = JSON.parse(event.body);
     const count = body.count || 1;
     const identifier = body.identifier || `run-${Math.floor(Math.random() * 100000)}`
@@ -29,10 +30,29 @@ export const producer = async (event: APIGatewayEvent) => {
     });
     await Promise.all(promises);
 
+    var params = {
+      MetricData: [
+          {
+              MetricName: 'producer-count',
+              Dimensions: [
+                  {
+                      Name: 'run',
+                      Value: runID
+                  }
+              ],
+              Unit: 'None',
+              Value: count
+          }
+      ],
+      Namespace: 'CeramicBenchmarkMetrics'
+  };
+
+    console.log(await cloudwatch.putMetricData(params).promise())
+
     return {
       statusCode: 200,
       body: JSON.stringify({
-        message: `Starting ${count} simultaneous requests`,
+        message: `Starting ${count} simultaneous requests, run id`,
         count: count,
       }),
     };
