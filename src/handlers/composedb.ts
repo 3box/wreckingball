@@ -50,98 +50,119 @@ export async function consumer(event: SQSEvent) {
     let body: Task = JSON.parse(record.body);
     console.log("parsing passed", body);
     // Case crete new doc
-    if (!('streamId' in body)) {
-      const seed = randomBytes(32);
-      const ceramic = await createCeramic(body.endpoint, seed);
-      const model = await Model.create(ceramic, MODEL_DEFINITION)
-      const midMetadata = { model: model.id }
-      const modelContent = { myData: 0 };
-      const doc = await ModelInstanceDocument.create(ceramic, modelContent, midMetadata, undefined, {
-        anchor: false,
-        publish: false,
-      });
-      const messageBody = Object.assign({}, body, {
-        streamId: doc.id.toString(),
-        seed: uint8arrays.toString(seed, "base64url"),
-      });
-      console.log(`Created streamId: `, doc.id.toString());
-      console.log(doc.state);
-      for (let step = 0; step < body.numberOfReaders; step++) {
-        sqsPromises.push(
-          sqs
-            .sendMessage({
-              QueueUrl: QUEUE_URL,
-              MessageBody: JSON.stringify(messageBody),
-            })
-            .promise()
-        );
-      }
-      console.log(await cloudwatch.putMetricData(createDocMetric(body.identifier)).promise())
-
-    } else if ('streamId' in body && body.jobRunReadSeconds > 0) {
-      // Case read the doc
-      console.log(`msLeft: `, (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
-
-      while ((body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp) > 0) {
-        console.log(`lambdaRuntime left : `, (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp));
-
-        if ((Date.now() - body.jobStartTimestamp) > (lambdaRuntimeSeconds * 1000 * body.generation)) {
-          body.generation += 1; // TODO: this is showing up as generation 4 on the first iteration?!? 
-          console.log(`Lamdba timeout almost reached, resubmitting`);
+    switch (body.state) {
+      case 'create': {
+        const seed = randomBytes(32);
+        const ceramic = await createCeramic(body.endpoint, seed);
+        const model = await Model.create(ceramic, MODEL_DEFINITION)
+        const midMetadata = { model: model.id }
+        const modelContent = { myData: 0 };
+        const doc = await ModelInstanceDocument.create(ceramic, modelContent, midMetadata, undefined, {
+          anchor: true,
+          publish: true,
+        });
+        console.log(`Created streamId: `, doc.id.toString());
+        const readerMessageBody = Object.assign({}, body, {
+          state: 'read',
+          streamId: doc.id.toString(),
+          seed: uint8arrays.toString(seed, "base64url"),
+        });
+        for (let step = 0; step < body.numberOfReaders; step++) {
           sqsPromises.push(
             sqs
               .sendMessage({
                 QueueUrl: QUEUE_URL,
-                MessageBody: JSON.stringify(body),
+                MessageBody: JSON.stringify(readerMessageBody),
               })
               .promise()
           );
-          return "lambda timeout"
         }
-        const msLeft = (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp);
-        console.log(`msLeft: `, msLeft);
-        const seed = uint8arrays.fromString(body.seed, "base64url");
-        const ceramic = await createCeramic(body.endpoint, seed);
-        const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
-        console.log(await cloudwatch.putMetricData(readDocMetric(body.identifier)).promise());
-        console.log(`Read streamId: `, doc.id.toString());
-        // TODO Randomize
-        await sleep(1 * 1000); // Sleep for 1 second
+        const updateMessageBody = Object.assign({}, body, {
+          state: 'update',
+          streamId: doc.id.toString(),
+          seed: uint8arrays.toString(seed, "base64url"),
+        });
+        if (body.jobRunUpdateSeconds > 0) {
+          sqsPromises.push(
+            sqs
+              .sendMessage({
+                QueueUrl: QUEUE_URL,
+                MessageBody: JSON.stringify(updateMessageBody),
+              })
+              .promise()
+          );
+        }
+        console.log(await cloudwatch.putMetricData(createDocMetric(body.identifier)).promise());
       }
-      console.log(`Done reading streamId`, body.streamId);
-      return "success";
+        break;
+      case 'read': {
+        console.log(`read msLeft: `, (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
+        while ((body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp) > 0) {
+          console.log(`lambdaRuntime left : `, (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp));
 
-    } else if ('streamId' in body && body.numberOfUpdatesRequired > 0) {
-      // Update the doc
-      const seed = uint8arrays.fromString(body.seed, "base64url");
-      const ceramic = await createCeramic(body.endpoint, seed);
-      const newModelContent = { myData: 1 }; // TODO: get and increment the current value
-      const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
-      await doc.update(newModelContent, undefined, { anchor: false, publish: false });
-      const numberOfUpdatesRemaining = body.numberOfUpdatesRequired - 1;
-      console.log(`Updated doc`, doc.id.toString());
-      console.log(doc.state);
-      console.log(await cloudwatch.putMetricData(updateDocMetric(body.identifier, numberOfUpdatesRemaining)).promise())
-      const messageBody = Object.assign({}, body, {
-        numberOfUpdatesRequired: numberOfUpdatesRemaining,
-      });
-      if (numberOfUpdatesRemaining) {
-        console.log(`Need to do ${numberOfUpdatesRemaining} updates`);
-        // TODO Randomize
-        sqsPromises.push(
-          sqs
-            .sendMessage({
-              QueueUrl: QUEUE_URL,
-              MessageBody: JSON.stringify(messageBody),
-            })
-            .promise()
-        );
-      } else {
-        console.log(`Nothing to do with streamId`, body.streamId);
-        return "success";
+          if ((Date.now() - body.jobStartTimestamp) > (lambdaRuntimeSeconds * 1000 * body.generation)) {
+            body.generation += 1; // TODO: this is showing up as generation 4 on the first iteration?!?
+            console.log(`Read lamdba timeout almost reached, resubmitting`);
+            sqsPromises.push(
+              sqs
+                .sendMessage({
+                  QueueUrl: QUEUE_URL,
+                  MessageBody: JSON.stringify(body),
+                })
+                .promise()
+            );
+            return "lambda timeout"
+          }
+          const msLeft = (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp);
+          console.log(`read msLeft: `, msLeft);
+          const seed = uint8arrays.fromString(body.seed, "base64url");
+          const ceramic = await createCeramic(body.endpoint, seed);
+          const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
+          console.log(await cloudwatch.putMetricData(readDocMetric(body.identifier)).promise());
+          console.log(`Read streamId: `, doc.id.toString());
+          // TODO Randomize
+          await sleep(1 * 1000); // Sleep for 1 second
+        }
+        console.log(`Done reading streamId`, body.streamId);
       }
-    } else {
-      console.log(`Should never be here, generate an error?`);
+        break;
+      case 'update': {
+        console.log(`update msLeft: `, (body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
+        while ((body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp) > 0) {
+          console.log(`lambdaRuntime left : `, (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp));
+
+          if ((Date.now() - body.jobStartTimestamp) > (lambdaRuntimeSeconds * 1000 * body.generation)) {
+            body.generation += 1; // TODO: this is showing up as generation 4 on the first iteration?!?
+            console.log(`Update lamdba timeout almost reached, resubmitting`);
+            sqsPromises.push(
+              sqs
+                .sendMessage({
+                  QueueUrl: QUEUE_URL,
+                  MessageBody: JSON.stringify(body),
+                })
+                .promise()
+            );
+            return "lambda timeout"
+          }
+
+          const msLeft = (body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp);
+          console.log(`update msLeft: `, msLeft);
+          const seed = uint8arrays.fromString(body.seed, "base64url");
+          const ceramic = await createCeramic(body.endpoint, seed);
+          const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
+          const newModelContent = { myData: 1 }; // TODO: get and increment the current value
+          await doc.replace(newModelContent)
+          await doc.sync()
+          //await doc.update(newModelContent, undefined, { anchor: false, publish: false });
+          console.log(`Updated doc`, doc.id.toString());
+          console.log(await cloudwatch.putMetricData(updateDocMetric(body.identifier)).promise())
+
+        }
+        console.log(`Done updating streamId`, body.streamId);
+      }
+        break;
+      default:
+        console.log(`Should never be here, generate an error?`);
     }
   });
 
@@ -168,7 +189,7 @@ export async function trigger(event: APIGatewayEvent) {
     const endpoint = body.endpoint;
     if (!endpoint) throw new Error(`Must provide endpoint`);
 
-    const state = 'Starting';
+    const state = 'create';
     const numberOfDocs = body.numberOfDocs || 1;
     const numberOfReaders = body.numberOfReaders || 1;
     const jobRunReadSeconds = body.jobRunReadSeconds || 60;
@@ -215,6 +236,7 @@ interface Task {
   state: string;
   generation: number;
   seed: string;
+  streamId: string;
   identifier: string;
   endpoint: string;
   numberOfDocs: number;

@@ -31,19 +31,21 @@ constructs:
     batchSize: 10
     worker:
       handler: src/handlers/consumer.consumer
-      timeout: 120
   multistream:
     type: queue
     batchSize: 10
     worker:
       handler: src/handlers/multistream.consumer
-      timeout: 120
   composedb:
     type: queue
     batchSize: 10
     worker:
       handler: src/handlers/composedb.consumer
-      timeout: 120
+  composedbSimpleRelation:
+    type: queue
+    batchSize: 10
+    worker:
+      handler: src/handlers/composedbSimpleRelation.consumer
 
 functions:
   producerMultistream:
@@ -70,3 +72,11 @@ functions:
           path: /composedbTrigger
     environment:
       QUEUE_URL: ${construct:composedb.queueUrl}
+  composedbSimpleRelationTrigger:
+    handler: src/handlers/composedbSimpleRelation.trigger
+    events:
+      - httpApi:
+          method: post
+          path: /composedbSimpleRelation
+    environment:
+      QUEUE_URL: ${construct:composedbSimpleRelation.queueUrl}

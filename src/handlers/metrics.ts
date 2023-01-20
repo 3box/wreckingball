@@ -61,7 +61,7 @@ export function readDocMetric(identifier: string) {
     return params
 }
 
-export function updateDocMetric(identifier: string, numberOfUpdatesRemaining: number) {
+export function updateDocMetric(identifier: string) {
     const params = {
         MetricData: [
             {
@@ -73,7 +73,8 @@ export function updateDocMetric(identifier: string, numberOfUpdatesRemaining: nu
                     }
                 ],
                 Unit: 'None',
-                Value: numberOfUpdatesRemaining
+                Value: 1,
+                StorageResolution: 1 // High resolution
             }
         ],
         Namespace: 'CeramicBenchmarkMetrics'
