@@ -18,6 +18,22 @@ const sqs = new SQS();
 const cloudwatch = new CloudWatch();
 const lambdaRuntimeSeconds = 90;
 
+const { createLogger, format, transports } = require("winston");
+
+const logLevels = {
+  fatal: 0,
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+  trace: 5,
+};
+
+const logger = createLogger({
+  levels: logLevels,
+  transports: [new transports.Console()],
+});
+
 const MODEL_DEFINITION: ModelDefinition = {
   name: 'MyModel',
   accountRelation: { type: 'list' },
@@ -37,7 +53,7 @@ const MODEL_DEFINITION: ModelDefinition = {
 }
 
 export async function consumer(event: SQSEvent) {
-  console.log("r.0", event.Records.length);
+  logger.info("r.0", event.Records.length);
   const sqsPromises: Array<Promise<any>> = [];
   const processingPromises = event.Records.map(async (record) => {
     const queueArn = record.eventSourceARN;
@@ -46,9 +62,9 @@ export async function consumer(event: SQSEvent) {
       "https://sqs.$1.amazonaws.com/$2/$3"
     );
 
-    console.log("r", record);
     let body: Task = JSON.parse(record.body);
-    console.log("parsing passed", body);
+    logger.info("records received", {record: record});
+    logger.info("parsing passed", {body: body});
     // Case crete new doc
     switch (body.state) {
       case 'create': {
@@ -58,10 +74,10 @@ export async function consumer(event: SQSEvent) {
         const midMetadata = { model: model.id }
         const modelContent = { myData: 0 };
         const doc = await ModelInstanceDocument.create(ceramic, modelContent, midMetadata, undefined, {
-          anchor: true,
-          publish: true,
+          anchor: body.anchor,
+          publish: body.publish,
         });
-        console.log(`Created streamId: `, doc.id.toString());
+        logger.info(`Created streamId`, {docID: doc.id.toString(), identifier: body.identifier});
         const readerMessageBody = Object.assign({}, body, {
           state: 'read',
           streamId: doc.id.toString(),
@@ -92,17 +108,17 @@ export async function consumer(event: SQSEvent) {
               .promise()
           );
         }
-        console.log(await cloudwatch.putMetricData(createDocMetric(body.identifier)).promise());
+        logger.info(await cloudwatch.putMetricData(createDocMetric(body.identifier)).promise());
       }
         break;
       case 'read': {
-        console.log(`read msLeft: `, (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
+        logger.info(`Reading case`, {read_msLeft: (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp), identifier: body.identifier});
         while ((body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp) > 0) {
-          console.log(`lambdaRuntime left : `, (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp));
+          logger.info(`lambdaRuntime check`, {lambdaMsleft: (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp), identifier: body.identifier});
 
           if ((Date.now() - body.jobStartTimestamp) > (lambdaRuntimeSeconds * 1000 * body.generation)) {
             body.generation += 1; // TODO: this is showing up as generation 4 on the first iteration?!?
-            console.log(`Read lamdba timeout almost reached, resubmitting`);
+            logger.info(`Read lamdba timeout almost reached, resubmitting`, {identifier: body.identifier});
             sqsPromises.push(
               sqs
                 .sendMessage({
@@ -114,26 +130,26 @@ export async function consumer(event: SQSEvent) {
             return "lambda timeout"
           }
           const msLeft = (body.jobRunReadSeconds * 1000) - (Date.now() - body.jobStartTimestamp);
-          console.log(`read msLeft: `, msLeft);
+          logger.info(`Start read streamId`, {streamID: body.streamId, read_msLeft: msLeft, identifier: body.identifier});
           const seed = uint8arrays.fromString(body.seed, "base64url");
           const ceramic = await createCeramic(body.endpoint, seed);
           const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
-          console.log(await cloudwatch.putMetricData(readDocMetric(body.identifier)).promise());
-          console.log(`Read streamId: `, doc.id.toString());
+          logger.info(await cloudwatch.putMetricData(readDocMetric(body.identifier)).promise());
+          logger.info(`Done read streamId`, {docID: doc.id.toString(), identifier: body.identifier});
           // TODO Randomize
           await sleep(1 * 1000); // Sleep for 1 second
         }
-        console.log(`Done reading streamId`, body.streamId);
+        logger.info(`Read time expired, completed reading streamId`, {streamID: body.streamId, identifier: body.identifier});
       }
         break;
       case 'update': {
-        console.log(`update msLeft: `, (body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp));
+        logger.info(`Update case`, { update_msLeft: (body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp), identifier: body.identifier});
         while ((body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp) > 0) {
-          console.log(`lambdaRuntime left : `, (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp));
+          logger.info(`lambdaRuntime check`, {lambdaMsleft: (lambdaRuntimeSeconds * 1000 * body.generation) - (Date.now() - body.jobStartTimestamp), identifier: body.identifier});
 
           if ((Date.now() - body.jobStartTimestamp) > (lambdaRuntimeSeconds * 1000 * body.generation)) {
             body.generation += 1; // TODO: this is showing up as generation 4 on the first iteration?!?
-            console.log(`Update lamdba timeout almost reached, resubmitting`);
+            logger.info(`Update lamdba timeout almost reached, resubmitting`, {identifier: body.identifier});
             sqsPromises.push(
               sqs
                 .sendMessage({
@@ -146,7 +162,7 @@ export async function consumer(event: SQSEvent) {
           }
 
           const msLeft = (body.jobRunUpdateSeconds * 1000) - (Date.now() - body.jobStartTimestamp);
-          console.log(`update msLeft: `, msLeft);
+          logger.info(`Start update streamId`, {update_msLeft: msLeft, streamID: body.streamId, identifier: body.identifier});
           const seed = uint8arrays.fromString(body.seed, "base64url");
           const ceramic = await createCeramic(body.endpoint, seed);
           const doc = await ModelInstanceDocument.load(ceramic, body.streamId);
@@ -154,15 +170,15 @@ export async function consumer(event: SQSEvent) {
           await doc.replace(newModelContent)
           await doc.sync()
           //await doc.update(newModelContent, undefined, { anchor: false, publish: false });
-          console.log(`Updated doc`, doc.id.toString());
-          console.log(await cloudwatch.putMetricData(updateDocMetric(body.identifier)).promise())
+          logger.info(await cloudwatch.putMetricData(updateDocMetric(body.identifier)).promise())
+          logger.info(`Done update streamId`, {streamID: body.streamId, identifier: body.identifier});
 
         }
-        console.log(`Done updating streamId`, body.streamId);
+        logger.info(`Update time expired, completed updating streamId`, {streamID: body.streamId, identifier: body.identifier});
       }
         break;
       default:
-        console.log(`Should never be here, generate an error?`);
+        logger.error(`Should never be here, generate an error?`, {identifier: body.identifier});
     }
   });
 
@@ -190,6 +206,8 @@ export async function trigger(event: APIGatewayEvent) {
     if (!endpoint) throw new Error(`Must provide endpoint`);
 
     const state = 'create';
+    const anchor = body.anchor || false;
+    const publish = body.publish || false;
     const numberOfDocs = body.numberOfDocs || 1;
     const numberOfReaders = body.numberOfReaders || 1;
     const jobRunReadSeconds = body.jobRunReadSeconds || 60;
@@ -199,8 +217,9 @@ export async function trigger(event: APIGatewayEvent) {
     const identifier =
       body.identifier || `composedb-run-${Math.floor(Math.random() * 100000)}`;
 
-    const messageBody = JSON.stringify({ state, generation, identifier, endpoint, numberOfDocs, numberOfReaders, jobRunReadSeconds, jobRunUpdateSeconds, jobStartTimestamp });
-    console.log("queue_url", process.env.QUEUE_URL);
+    const messageBody = JSON.stringify({ state, anchor, publish, generation, identifier, endpoint, numberOfDocs, numberOfReaders, jobRunReadSeconds, jobRunUpdateSeconds, jobStartTimestamp });
+    logger.info("queue_url", {queue_url: process.env.QUEUE_URL});
+    logger.info("message_body", {message_body: messageBody});
     const promises = Array.from({ length: numberOfDocs }).map((_, index) => {
       return sqs
         .sendMessage({
@@ -211,14 +230,14 @@ export async function trigger(event: APIGatewayEvent) {
     });
     await Promise.all(promises);
 
-    console.log(await cloudwatch.putMetricData(triggerMetric(identifier, numberOfDocs)).promise())
+    logger.info(await cloudwatch.putMetricData(triggerMetric(identifier, numberOfDocs)).promise())
 
     return {
       statusCode: 200,
       body: messageBody
     };
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return {
       statusCode: 500,
       body: JSON.stringify({
@@ -234,6 +253,8 @@ function sleep(ms) {
 
 interface Task {
   state: string;
+  anchor: boolean;
+  publish: boolean;
   generation: number;
   seed: string;
   streamId: string;
@@ -245,3 +266,4 @@ interface Task {
   jobRunUpdateSeconds: number;
   jobStartTimestamp: number;
 }
+
