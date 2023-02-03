@@ -36,6 +36,7 @@ const logger = createLogger({
 
 const MODEL_DEFINITION: ModelDefinition = {
   name: 'MyModel',
+  version: '1.0',
   accountRelation: { type: 'list' },
   schema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
