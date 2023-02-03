@@ -81,3 +81,28 @@ export function updateDocMetric(identifier: string) {
     };
     return params
 }
+
+export function errorMetric(identifier: string, errorCode: string) {
+    const params = {
+        MetricData: [
+            {
+                MetricName: 'error',
+                Dimensions: [
+                    {
+                        Name: 'identifier',
+                        Value: identifier
+                    },
+                    {
+                        Name: 'errorCode',
+                        Value: errorCode
+                    }
+                ],
+                Unit: 'None',
+                Value: 1,
+                StorageResolution: 1 // High resolution
+            }
+        ],
+        Namespace: 'CeramicBenchmarkMetrics'
+    };
+    return params
+}
