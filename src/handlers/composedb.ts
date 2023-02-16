@@ -211,7 +211,7 @@ export async function trigger(event: APIGatewayEvent) {
   }
 
   try {
-    const body = JSON.parse(event.body);
+    const body: Task  = JSON.parse(event.body);
     const endpoint = body.endpoint;
     if (!endpoint) throw new Error(`Must provide endpoint`);
 
@@ -230,15 +230,21 @@ export async function trigger(event: APIGatewayEvent) {
     const messageBody = JSON.stringify({ state, anchor, publish, generation, identifier, endpoint, numberOfDocs, numberOfReaders, jobRunReadSeconds, jobRunUpdateSeconds, jobStartTimestamp });
     logger.info("queue_url", { queue_url: process.env.QUEUE_URL });
     logger.info("message_body", { message_body: messageBody });
-    const promises = Array.from({ length: numberOfDocs }).map((_, index) => {
-      return sqs
-        .sendMessage({
-          QueueUrl: process.env.QUEUE_URL,
-          MessageBody: messageBody,
-        })
-        .promise();
-    });
-    await Promise.all(promises);
+    const batchSize = 100;
+    const batchCadanceMS = 1000;
+    for (let i = 0; i < numberOfDocs / batchSize; i++) {
+      logger.info("batching creates", { batch_number: i, batch_size: batchSize, batchCadanceMS: batchCadanceMS });
+      const promises = Array.from({ length: batchSize }).map((_, index) => {
+        return sqs
+          .sendMessage({
+            QueueUrl: process.env.QUEUE_URL,
+            MessageBody: messageBody,
+          })
+          .promise();
+      });
+      await Promise.all(promises);
+      await sleep(batchCadanceMS);
+    }
 
     logger.info(await cloudwatch.putMetricData(triggerMetric(identifier, numberOfDocs)).promise())
 
