@@ -230,9 +230,10 @@ export async function trigger(event: APIGatewayEvent) {
     const messageBody = JSON.stringify({ state, anchor, publish, generation, identifier, endpoint, numberOfDocs, numberOfReaders, jobRunReadSeconds, jobRunUpdateSeconds, jobStartTimestamp });
     logger.info("queue_url", { queue_url: process.env.QUEUE_URL });
     logger.info("message_body", { message_body: messageBody });
-    const batchSize = 100;
+    const maxBatchSize = 100;
     const batchCadanceMS = 1000;
-    for (let i = 0; i < numberOfDocs / batchSize; i++) {
+    for (let i = 0; i < numberOfDocs / maxBatchSize; i++) {
+      const batchSize = Math.min(maxBatchSize, numberOfDocs)
       logger.info("batching creates", { batch_number: i, batch_size: batchSize, batchCadanceMS: batchCadanceMS });
       const promises = Array.from({ length: batchSize }).map((_, index) => {
         return sqs
