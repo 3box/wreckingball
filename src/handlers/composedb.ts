@@ -233,6 +233,7 @@ export async function trigger(event: APIGatewayEvent) {
     const batchSize = 100;
     const batchCadanceMS = 1000;
     for (let i = 0; i < numberOfDocs / batchSize; i++) {
+      const doBatchsize = Math.min(batchSize, numberOfDocs)
       logger.info("batching creates", { batch_number: i, batch_size: batchSize, batchCadanceMS: batchCadanceMS });
       const promises = Array.from({ length: batchSize }).map((_, index) => {
         return sqs
